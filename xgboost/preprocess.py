@@ -1,7 +1,9 @@
 import pandas as pd
+from typing import Tuple, Dict, Union
 from collections import defaultdict
 
-def preprocess_matches(df: pd.DataFrame) -> pd.DataFrame:
+
+def preprocess(df: pd.DataFrame) -> pd.DataFrame:
   print(df.columns)
   # 0 is right, 1 is left
   df["winner_left_hand"] = (df.loc[:, "winner_hand"] == 'L')
@@ -14,7 +16,8 @@ def preprocess_matches(df: pd.DataFrame) -> pd.DataFrame:
 
   df_A = df[winner_cols + w_cols].copy()
   df_A.columns = [c.replace("winner_", "playerA_") for c in winner_cols] + [c.replace("w_", "playerA_") for c in w_cols]
-  df_A["outcome"] = 1
+  # 0 if playerA is the winner, 1 if playerB is the winner
+  df_A["outcome"] = 0
   for c in loser_cols:
     df_A[c.replace("loser_", "playerB_")] = df[c].values
   for c in l_cols:
@@ -22,7 +25,7 @@ def preprocess_matches(df: pd.DataFrame) -> pd.DataFrame:
   
   df_B = df[loser_cols + l_cols].copy()
   df_B.columns = [c.replace("loser_", "playerA_") for c in loser_cols]+ [c.replace("l_", "playerA_") for c in l_cols]
-  df_B["outcome"] = 0
+  df_B["outcome"] = 1
   for c in winner_cols:
     df_B[c.replace("winner_", "playerB_")] = df[c].values
   for c in w_cols:
@@ -33,15 +36,14 @@ def preprocess_matches(df: pd.DataFrame) -> pd.DataFrame:
   df_model["age_diff"] = df_model["playerA_age"] - df_model["playerB_age"]
   df_model["height_diff"] = df_model["playerA_ht"] - df_model["playerB_ht"]
   df_model["elo_diff"] = df_model["playerA_elo"] - df_model["playerB_elo"]
+  df_model["rank_diff"] = df_model["playerA_rank"] - df_model["playerB_rank"]
   return df_model
 
-def load_and_preprocess(paths: list[str]) -> pd.DataFrame:
+def load(paths: list[str]) -> pd.DataFrame:
   dfs = [pd.read_csv(path) for path in paths] 
-  df = pd.concat(dfs, ignore_index=True)
-  df = add_elo(df)
-  return preprocess_matches(df)
+  return pd.concat(dfs, ignore_index=True)  
 
-def add_elo(df: pd.DataFrame, k: int = 32, initial_rating: int = 1500) -> pd.DataFrame:
+def add_elos(df: pd.DataFrame, k: int = 32, initial_rating: int = 1500) -> Tuple[pd.DataFrame, Dict[int, float]]:
   date_col = "tourney_date"
   df = df.sort_values(date_col).reset_index(drop=True)
   ratings = defaultdict(lambda: initial_rating)
@@ -67,4 +69,4 @@ def add_elo(df: pd.DataFrame, k: int = 32, initial_rating: int = 1500) -> pd.Dat
   df["winner_elo"] = eloWinner
   df["loser_elo"] = eloLoser
 
-  return df
+  return df, ratings

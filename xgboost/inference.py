@@ -1,6 +1,12 @@
 import pandas as pd
 from xgboost import XGBRegressor, XGBClassifier
-from preprocess import load_and_preprocess
+from preprocess import load, preprocess
+from train import predict_cols
+import json
+
+def ints_object_hook(d):
+    # Convert each key and value in this dict to int
+    return {int(k): int(v) for k, v in d.items()}
 
 def load_model(path: str, model_type: str = "reg"):
   if model_type == "reg":
@@ -12,9 +18,18 @@ def load_model(path: str, model_type: str = "reg"):
 
 
 def predict(paths: list[str], model) -> pd.DataFrame:
-    df = load_and_preprocess(paths)
+    df = load(paths)
+    # calc elos
+    with open('elos.json') as f:
+        ratings = json.load(f, object_hook=ints_object_hook)
+    
+    df['winner_elo'] = df['winner_id'].map(ratings)
+    df['loser_elo'] = df['loser_id'].map(ratings)
 
-    X = df[["playerA_rank", "playerB_rank", "playerA_left_hand", "playerB_left_hand", "age_diff", "height_diff", "elo_diff"]]
+
+    df = preprocess(df)
+
+    X = df[predict_cols]
 
     if hasattr(model, "predict_proba"):
         # classifier
@@ -41,3 +56,4 @@ if __name__ == "__main__":
       df_pred["correct"] = (df_pred["pred_label"] == df_pred["outcome"])
 
     print(df_pred["correct"].sum() / len(df_pred))
+    print(df_pred[["playerA_name", "playerB_name", "playerA_elo", "playerB_elo", "pred_label", "outcome"]])
