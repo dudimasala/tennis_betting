@@ -33,6 +33,18 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
 
   df_model = pd.concat([df_A, df_B], ignore_index=True)
   df_model = df_model.sample(frac=1, random_state=42).reset_index(drop=True) # shuffle
+
+  df_model["match_key"] = df_model.apply(
+    lambda r: (
+        min(r.playerA_id, r.playerB_id),
+        max(r.playerA_id, r.playerB_id),
+        r.tourney_id, r.match_num  # or whatever date field you have
+    ),
+    axis=1
+  )
+
+  df_model = df_model.drop_duplicates(subset="match_key", keep="first").reset_index(drop=True)
+
   df_model["age_diff"] = df_model["playerA_age"] - df_model["playerB_age"]
   df_model["height_diff"] = df_model["playerA_ht"] - df_model["playerB_ht"]
   df_model["elo_diff"] = df_model["playerA_elo"] - df_model["playerB_elo"]
@@ -40,6 +52,7 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
   df_model["form_diff"] = df_model["playerA_form"] - df_model["playerB_form"]
   df_model["surface"] = df_model["surface"].astype("category")
   df_model["h2h_diff"] = df_model["playerA_wins"] - df_model["playerB_wins"]
+
 
 
   return df_model
@@ -51,8 +64,8 @@ def load(paths: list[str]) -> pd.DataFrame:
 
 def add_recent_form(df: pd.DataFrame, window: int = 10):
   date_col = "tourney_date"
-  df_w = df.loc[:, [date_col, "winner_id"]].copy()
-  df_l = df.loc[:, [date_col, "loser_id"].copy()]
+  df_w = df.loc[:, ["tourney_id", date_col, "match_num", "winner_id"]].copy()
+  df_l = df.loc[:, ["tourney_id", date_col, "match_num", "loser_id"].copy()]
   df_w["player_id"] = df_w["winner_id"]
   df_l["player_id"] = df_l["loser_id"]
   df_w["outcome"] = 1
@@ -62,11 +75,13 @@ def add_recent_form(df: pd.DataFrame, window: int = 10):
   cdf = cdf.sort_values(date_col).reset_index(drop=True)
 
   cdf["form"] = (cdf.groupby("player_id")["outcome"].transform(lambda s: s.shift().rolling(window, min_periods=1).mean()))
-  winner_form = cdf.loc[cdf["outcome"] == 1, ["tourney_date", "player_id", "form"]]
-  winner_form.columns = ["tourney_date", "winner_id","winner_form"]
-  loser_form = cdf.loc[cdf["outcome"] == 0, ["tourney_date", "player_id", "form"]]
-  loser_form.columns = ["tourney_date", "loser_id", "loser_form"]
-  df = df.merge(winner_form, on=["tourney_date", "winner_id"], how="left").merge(loser_form, on=["tourney_date", "loser_id"], how="left")
+  winner_form = cdf.loc[cdf["outcome"] == 1, ["tourney_id", "match_num", "player_id", "form"]]
+  winner_form.columns = ["tourney_id", "match_num", "winner_id","winner_form"]
+  loser_form = cdf.loc[cdf["outcome"] == 0, ["tourney_id", "match_num", "player_id", "form"]]
+  loser_form.columns = ["tourney_id", "match_num", "loser_id", "loser_form"]
+
+  df = df.merge(winner_form, on=["tourney_id", "match_num", "winner_id"], how="left")
+  df = df.merge(loser_form, on=["tourney_id", "match_num", "loser_id"], how="left")
   return df
 
 
@@ -123,8 +138,6 @@ def add_head_to_head(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[Tuple[int, in
   
   df["winner_wins"] = wins_A_list
   df["loser_wins"] = wins_B_list
-  df["winner_wins"] //= 2
-  df["loser_wins"] //= 2
   df["total_matches"] = df["winner_wins"] + df["loser_wins"]
 
   return df, h2h
