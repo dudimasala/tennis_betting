@@ -31,9 +31,26 @@ def predict(paths: list[str], model) -> pd.DataFrame:
     # calc elos
     with open('elos.json') as f:
         ratings = json.load(f, object_hook=ints_object_hook)
+    with open('hard_elos.json') as f:
+        hard_ratings = json.load(f, object_hook=ints_object_hook)
+    with open('clay_elos.json') as f:
+        clay_ratings = json.load(f, object_hook=ints_object_hook)
+    with open('grass_elos.json') as f:
+        grass_ratings = json.load(f, object_hook=ints_object_hook)
+    with open('carpet_elos.json') as f:
+        carpet_ratings = json.load(f, object_hook=ints_object_hook)
+
     
     df['winner_elo'] = df['winner_id'].map(ratings)
     df['loser_elo'] = df['loser_id'].map(ratings)
+    df['winner_hard_elo'] = df['winner_id'].map(hard_ratings)
+    df['loser_hard_elo'] = df['loser_id'].map(hard_ratings)
+    df['winner_clay_elo'] = df['winner_id'].map(clay_ratings)
+    df['loser_clay_elo'] = df['loser_id'].map(clay_ratings)
+    df['winner_grass_elo'] = df['winner_id'].map(grass_ratings)
+    df['loser_grass_elo'] = df['loser_id'].map(grass_ratings)
+    df['winner_carpet_elo'] = df['winner_id'].map(carpet_ratings)
+    df['loser_carpet_elo'] = df['loser_id'].map(carpet_ratings)
 
     df = add_recent_form(df)
 

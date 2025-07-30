@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import json
 
 # predict_cols = ["rank_diff", "playerA_left_hand", "playerB_left_hand", "age_diff", "height_diff", "elo_diff", "form_diff", "surface"]
-predict_cols = ["elo_diff", "form_diff", "rank_diff", "h2h_diff", "total_matches"]
+predict_cols = ["elo_diff", "hard_elo_diff", "clay_elo_diff", "grass_elo_diff", "carpet_elo_diff", "form_diff", "rank_diff", "h2h_diff", "total_matches", 'surface']
 
 def train(start_year: int = 1968, end_year: int = 2023, fut_start_year: int = 1991, fut_end_year: int = 2024, chl_start_year: int = 1978, chl_end_year: int = 2024):
     paths = []
@@ -24,10 +24,20 @@ def train(start_year: int = 1968, end_year: int = 2023, fut_start_year: int = 19
         paths.append(f"../data/atp_matches_qual_chall_{year}.csv")      
     df = load(paths)
     # print(df.shape)
-    df, ratings = add_elos(df)
+    df, ratings, hard_ratings, clay_ratings, grass_ratings, carpet_ratings = add_elos(df)
     # print(df.shape)
     with open('elos.json', 'w') as f:
         json.dump(ratings, f)
+    with open('hard_elos.json', 'w') as f:
+        json.dump(hard_ratings, f)
+    with open('clay_elos.json', 'w') as f:
+        json.dump(clay_ratings, f)
+    with open('grass_elos.json', 'w') as f:
+        json.dump(grass_ratings, f)
+    with open('carpet_elos.json', 'w') as f:
+        json.dump(carpet_ratings, f)
+
+
     
     df = add_recent_form(df)
     # print(df.shape)

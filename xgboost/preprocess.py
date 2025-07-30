@@ -1,6 +1,11 @@
 import pandas as pd
-from typing import Tuple, Dict, Union
+from typing import Tuple, Dict, Union, List
 from collections import defaultdict
+import matplotlib.pyplot as plt
+
+
+def sort_chronologically(df: pd.DataFrame) -> pd.DataFrame:
+  return df.sort_values(['tourney_date', 'match_num', 'tourney_id']).reset_index(drop=True)
 
 
 def preprocess(df: pd.DataFrame) -> pd.DataFrame:
@@ -48,6 +53,10 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
   df_model["age_diff"] = df_model["playerA_age"] - df_model["playerB_age"]
   df_model["height_diff"] = df_model["playerA_ht"] - df_model["playerB_ht"]
   df_model["elo_diff"] = df_model["playerA_elo"] - df_model["playerB_elo"]
+  df_model["hard_elo_diff"] = df_model["playerA_hard_elo"] - df_model["playerB_hard_elo"]
+  df_model["clay_elo_diff"] = df_model["playerA_clay_elo"] - df_model["playerB_clay_elo"]
+  df_model["grass_elo_diff"] = df_model["playerA_grass_elo"] - df_model["playerB_grass_elo"]
+  df_model["carpet_elo_diff"] = df_model["playerA_carpet_elo"] - df_model["playerB_carpet_elo"]
   df_model["rank_diff"] = df_model["playerA_rank"] - df_model["playerB_rank"]
   df_model["form_diff"] = df_model["playerA_form"] - df_model["playerB_form"]
   df_model["surface"] = df_model["surface"].astype("category")
@@ -59,7 +68,9 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
 
 def load(paths: list[str]) -> pd.DataFrame:
   dfs = [pd.read_csv(path) for path in paths] 
-  return pd.concat(dfs, ignore_index=True)  
+  df = pd.concat(dfs, ignore_index=True) 
+  df["tourney_date"] = pd.to_datetime(df['tourney_date'], format='%Y%m%d')
+  return df
 
 
 def add_recent_form(df: pd.DataFrame, window: int = 10):
@@ -70,9 +81,9 @@ def add_recent_form(df: pd.DataFrame, window: int = 10):
   df_l["player_id"] = df_l["loser_id"]
   df_w["outcome"] = 1
   df_l["outcome"] = 0
-
+# need to fix the sort by date
   cdf = pd.concat([df_w, df_l], ignore_index=True)
-  cdf = cdf.sort_values(date_col).reset_index(drop=True)
+  cdf = sort_chronologically(cdf)
 
   cdf["form"] = (cdf.groupby("player_id")["outcome"].transform(lambda s: s.shift().rolling(window, min_periods=1).mean()))
   winner_form = cdf.loc[cdf["outcome"] == 1, ["tourney_id", "match_num", "player_id", "form"]]
@@ -85,41 +96,74 @@ def add_recent_form(df: pd.DataFrame, window: int = 10):
   return df
 
 
+def calc_and_update_ratings(ratings: Dict, winner_id: int, loser_id: int, winner_elo: List[float], loser_elo: List[float], update: bool, k: int = 32) -> None:
+  ra = ratings[winner_id]
+  rb = ratings[loser_id]
+  winner_elo.append(ra)
+  loser_elo.append(rb)
+  if update:
+    ea = 1 / (1 + 10 ** ((rb - ra) / 400))
+    ratings[winner_id] += k * (1 - ea)
+    ratings[loser_id] += k * (ea - 1)
 
 
-def add_elos(df: pd.DataFrame, k: int = 32, initial_rating: int = 1500) -> Tuple[pd.DataFrame, Dict[int, float]]:
-  date_col = "tourney_date"
-  df = df.sort_values(date_col).reset_index(drop=True)
+
+def add_elos(df: pd.DataFrame, k: int = 32, initial_rating: int = 1500) -> Tuple[pd.DataFrame, Dict[int, float], Dict[int, float], Dict[int, float], Dict[int, float], Dict[int, float]]:
+  df = sort_chronologically(df)
   ratings = defaultdict(lambda: initial_rating)
 
   eloWinner = []
   eloLoser = []
 
+  hard_ratings = defaultdict(lambda: initial_rating)
+  clay_ratings = defaultdict(lambda: initial_rating)
+  grass_ratings = defaultdict(lambda: initial_rating)
+  carpet_ratings = defaultdict(lambda: initial_rating)
+
+  hardEloWinner = []
+  clayEloWinner = []
+  grassEloWinner = []
+  carpetEloWinner = []
+  hardEloLoser = []
+  clayEloLoser = []
+  grassEloLoser = []
+  carpetEloLoser = []
+
+  surface_map = {
+    "Hard":   (hard_ratings,   hardEloWinner,   hardEloLoser),
+    "Clay":   (clay_ratings,   clayEloWinner,   clayEloLoser),
+    "Grass":  (grass_ratings,  grassEloWinner,  grassEloLoser),
+    "Carpet": (carpet_ratings, carpetEloWinner, carpetEloLoser),
+  }
+
   for row in df.itertuples(index=False):
-    ra = ratings[row.winner_id]
-    rb = ratings[row.loser_id]
+    calc_and_update_ratings(ratings, row.winner_id, row.loser_id, eloWinner, eloLoser, update=True)
 
-    # prematch ratings
-    eloWinner.append(ra)
-    eloLoser.append(rb)
+    for surf, (surf_ratings, eloW, eloL) in surface_map.items():
+      should_update = (row.surface == surf)
+      calc_and_update_ratings(surf_ratings, row.winner_id, row.loser_id, eloW, eloL, update=should_update)
 
-    # expected
-    ea = 1 / (1 + 10 ** ((rb - ra) / 400))
-
-    # update ratings
-    ratings[row.winner_id] += k * (1 - ea)
-    ratings[row.loser_id] += k * (ea - 1)
-  
   df["winner_elo"] = eloWinner
   df["loser_elo"] = eloLoser
+  df["winner_hard_elo"] = hardEloWinner
+  df["loser_hard_elo"] = hardEloLoser
+  df["winner_clay_elo"] = clayEloWinner
+  df["loser_clay_elo"] = clayEloLoser
+  df["winner_grass_elo"] = grassEloWinner
+  df["loser_grass_elo"] = grassEloLoser
+  df["winner_carpet_elo"] = carpetEloWinner
+  df["loser_carpet_elo"] = carpetEloLoser
 
-  return df, ratings
+  print(df[["winner_carpet_elo"]])
+
+
+  return df, ratings, hard_ratings, clay_ratings, grass_ratings, carpet_ratings
 
 
 def add_head_to_head(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[Tuple[int, int], Dict]]:
   date_col = "tourney_date"
   df = df.copy()
-  df = df.sort_values(date_col).reset_index(drop=True)
+  df = sort_chronologically(df)
 
   h2h = defaultdict(lambda: {'A': 0, 'B': 0})
 
