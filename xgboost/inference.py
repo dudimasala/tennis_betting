@@ -1,12 +1,21 @@
 import pandas as pd
 from xgboost import XGBRegressor, XGBClassifier
-from preprocess import load, preprocess
+from preprocess import load, preprocess, add_recent_form
 from train import predict_cols
 import json
+from collections import defaultdict
 
 def ints_object_hook(d):
     # Convert each key and value in this dict to int
     return {int(k): int(v) for k, v in d.items()}
+
+def load_h2h_counts():
+    raw = json.load(open('h2h.json'))
+    h2h = defaultdict(lambda: {"A":0,"B":0})
+    for key, counts in raw.items():
+        a_str, b_str = key.split(",")
+        h2h[(int(a_str), int(b_str))] = counts
+    return h2h
 
 def load_model(path: str, model_type: str = "reg"):
   if model_type == "reg":
@@ -26,6 +35,22 @@ def predict(paths: list[str], model) -> pd.DataFrame:
     df['winner_elo'] = df['winner_id'].map(ratings)
     df['loser_elo'] = df['loser_id'].map(ratings)
 
+    df = add_recent_form(df)
+
+    h2h_counts = load_h2h_counts()
+    winsA = { pair: counts["A"] for pair, counts in h2h_counts.items() }
+    winsB = { pair: counts["B"] for pair, counts in h2h_counts.items() }
+
+    winsA_s = pd.Series(winsA)
+    winsB_s = pd.Series(winsB)
+
+    df["pair"] = list(zip(df["winner_id"], df["loser_id"]))
+    df["winner_wins"] = df["pair"].map(winsA_s).fillna(0).astype(int)
+    df["loser_wins" ] = df["pair"].map(winsB_s).fillna(0).astype(int)
+    df["winner_wins"] //= 2
+    df["loser_wins"] //= 2
+    df.drop(columns="pair", inplace=True)
+    df["total_matches"] = df["winner_wins"] + df["loser_wins"]
 
     df = preprocess(df)
 
@@ -43,8 +68,8 @@ def predict(paths: list[str], model) -> pd.DataFrame:
 if __name__ == "__main__":
     MODEL_PATH = "tennis_xgb.json"
     model = load_model(MODEL_PATH, model_type="cls")
-    path = "../data/atp_matches_2024.csv"
-    df_pred = predict([path], model)
+    paths = ["../data/atp_matches_2021.csv", "../data/atp_matches_2022.csv", "../data/atp_matches_2023.csv", "../data/atp_matches_2024.csv"]
+    df_pred = predict(paths, model)
 
     if "pred_reg" in df_pred.columns:
       df_pred["correct"] = (
@@ -56,4 +81,4 @@ if __name__ == "__main__":
       df_pred["correct"] = (df_pred["pred_label"] == df_pred["outcome"])
 
     print(df_pred["correct"].sum() / len(df_pred))
-    print(df_pred[["playerA_name", "playerB_name", "playerA_elo", "playerB_elo", "pred_label", "outcome"]])
+    print(df_pred[["playerA_name", "playerB_name", "playerA_elo", "playerB_elo", "h2h_diff", "total_matches", "pred_label", "outcome"]])
