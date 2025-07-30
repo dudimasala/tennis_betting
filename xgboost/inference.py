@@ -83,7 +83,7 @@ def predict(paths: list[str], model) -> pd.DataFrame:
 if __name__ == "__main__":
     MODEL_PATH = "tennis_xgb.json"
     model = load_model(MODEL_PATH, model_type="cls")
-    paths = ["../data/atp_matches_2024.csv"]
+    paths = ["../data/atp_matches_2021.csv", "../data/atp_matches_2022.csv", "../data/atp_matches_2023.csv", "../data/atp_matches_2024.csv"]
     df_pred = predict(paths, model)
 
     if "pred_reg" in df_pred.columns:
